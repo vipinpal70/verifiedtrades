@@ -1,0 +1,37 @@
+
+
+YG 5X Trades Records
+
+Verified
+Trade Record
+Every signal. Every result. Nothing hidden.
+Transparency Matters
+
+February — November 2026 ?
+
+
+Total Combine stats (5x channel, GOLD indicator,BTC indicator)
+
+
+131 Total Trades
+81% Win Rate
++257.5R Total R Gained
+
+
+
+3 tabs
+5X channel
+GOLD indicator
+BTC indicator
+
+
+each tabs have their own stats and trade sheet, monthly reports in a card 
+
+add some animation or cummulative line graph
+and an input to select user to pick your lost size to check your growth if you also taken these trades or copy these trades
+
+
+
+For the real data i have a google spreadsheet, so i am thinking to fetch data from sheet and show the real data
+in each 15M we will fetch the real data and store these data into sqllite db at local as a .db file
+

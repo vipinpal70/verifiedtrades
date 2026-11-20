@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YG 5X Trade Records</title>
+  <meta name="description" content="Verified trade record for the 5X Channel, GOLD Indicator and BTC Indicator. Every signal, every result.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span>YG 5X <span class="muted">Trades Records</span></div>
+      <p class="sync" id="sync-status" aria-live="polite">Loading…</p>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="eyebrow"><span class="eyebrow-line" aria-hidden="true"></span>Verified trade record</p>
+      <h1 id="hero-title">Every signal. Every result.<br><span class="accent">Nothing hidden.</span></h1>
+      <p class="lede">Transparency matters. <span id="hero-period"></span></p>
+      <dl class="hero-stats" id="hero-stats" aria-label="Combined stats: 5X Channel, GOLD Indicator, BTC Indicator">
+        <div><dt>Total trades</dt><dd data-k="count">—</dd></div>
+        <div><dt>Win rate</dt><dd data-k="winRate">—</dd></div>
+        <div><dt>Total R gained</dt><dd data-k="totalR" class="accent">—</dd></div>
+      </dl>
+      <p class="hint">Combined across 5X Channel, GOLD Indicator and BTC Indicator.</p>
+    </section>
+
+    <!-- Moved into the tab panel (below the chart) by app.js once data loads. -->
+    <section class="calc card" id="calc" aria-labelledby="calc-title" hidden>
+      <div>
+        <h2 id="calc-title">If you copied these trades</h2>
+        <p class="muted small">Pick a lot size and starting capital. Every trade is taken at that fixed lot size.</p>
+      </div>
+      <form class="calc-form" id="calc-form" novalidate>
+        <label><span>Lot size <span class="max-lot" id="max-lot"></span></span>
+          <input id="lots" name="lots" type="number" inputmode="decimal" min="0.01" step="0.01" required aria-describedby="max-lot calc-note">
+        </label>
+        <label>Starting capital ($)
+          <input id="balance" name="balance" type="number" inputmode="decimal" min="1" step="1" required>
+        </label>
+        <div class="presets" role="group" aria-label="Lot size presets">
+          <button type="button" data-lots="0.01">0.01</button>
+          <button type="button" data-lots="0.1">0.10</button>
+          <button type="button" data-lots="0.5">0.50</button>
+          <button type="button" data-lots="1">1.00</button>
+        </div>
+        <p class="field-error" id="calc-error" role="alert" hidden></p>
+        <p class="field-note" id="calc-note" aria-live="polite" hidden></p>
+      </form>
+      <details class="rulebook" open>
+        <summary>Lot size rule book</summary>
+        <p class="muted small">Never trade more than the max lot for your capital. Each extra $1,000 of capital allows +0.20 lot.</p>
+        <table>
+          <thead><tr><th scope="col">Capital</th><th scope="col">Max lot size</th></tr></thead>
+          <tbody id="rulebook-rows"></tbody>
+        </table>
+      </details>
+    </section>
+
+    <div class="tabs" role="tablist" aria-label="Signal source" id="tabs"></div>
+    <section id="panel" role="tabpanel" tabindex="-1" aria-live="polite">
+      <p class="state">Loading trade record…</p>
+    </section>
+    <section class="cta" aria-labelledby="cta-title">
+      <div class="cta-copy">
+        <p class="eyebrow"><span class="eyebrow-line" aria-hidden="true"></span>The Trader Circle</p>
+        <h2 id="cta-title">Ready to Trade<br><span class="accent">Alongside Us?</span></h2>
+        <p class="cta-lede">Live signals. Real trades. Verified results.</p>
+        <p class="muted">Join <a href="https://thetradercircle.com" rel="noopener" target="_blank">thetradercircle.com</a> and see every move in real time.</p>
+      </div>
+      <div class="cta-action">
+        <span class="cta-mark" aria-hidden="true">YG</span>
+        <!-- Replace href with the access form link -->
+        <a class="cta-btn" id="cta-btn" href="https://thetradercircle.com" rel="noopener" target="_blank">Get Access Now <span aria-hidden="true">→</span></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    <p><strong>Disclaimer.</strong> Past performance is not indicative of future results. Trading forex and commodities carries significant risk. All signals are for educational purposes only.</p>
+    <p>Copy-trade figures are hypothetical: fixed lot size, no spread, commission, swap or slippage.</p>
+  </footer>
+</body>
+</html>
