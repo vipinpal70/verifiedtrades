@@ -6,22 +6,15 @@ import { countTrades, logSync, replaceChannelTrades } from './db.js';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
-/** CSV URL for a tab: by gid (exact export) when set, otherwise by tab name (gviz endpoint). */
-export function sheetCsvUrl(sheetId, { gid, tab }) {
-  const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}`;
-  return gid
-    ? `${base}/export?format=csv&gid=${encodeURIComponent(gid)}`
-    : `${base}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(tab)}`;
-}
+/** CSV export URL for a tab id. An unknown gid returns HTTP 400 (unlike lookup by name, which returns the first tab). */
+export const sheetCsvUrl = (sheetId, gid) =>
+  `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/export?format=csv&gid=${encodeURIComponent(gid)}`;
 
-/** The sheet tab for a channel, or null if that channel is not configured. */
+/** The sheet tab id for a channel, or null if that channel is not configured. */
 export function sheetSource(cfg, channelId) {
   if (!cfg.sheetId) return null;
   const gid = cfg.gids?.[channelId];
-  const tab = cfg.tabs?.[channelId];
-  if (gid) return { gid };
-  if (tab && tab !== '-') return { tab };
-  return null;
+  return gid && gid !== '-' ? gid : null;
 }
 
 async function fetchCsv(url) {
@@ -29,7 +22,7 @@ async function fetchCsv(url) {
   if (res.status === 401 || res.status === 403) {
     throw new Error(`HTTP ${res.status}: the sheet is private. Share it as "Anyone with the link: Viewer".`);
   }
-  if (res.status === 400) throw new Error('HTTP 400: tab not found. Check the tab name / gid in .env.');
+  if (res.status === 400) throw new Error('HTTP 400: tab not found. Check its gid.');
   if (!res.ok) throw new Error(`Sheet request failed: HTTP ${res.status}`);
   const type = res.headers.get('content-type') ?? '';
   // A private sheet redirects to a Google login page (HTML) instead of CSV.

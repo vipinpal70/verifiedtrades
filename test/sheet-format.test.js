@@ -1,9 +1,9 @@
-// Rows copied from the real "YG Trades Report" sheet (5X tab), in the quoted form the gviz CSV endpoint returns.
+// Rows copied from the real "YG Trades Report" sheet (5X tab), with quoted CSV fields.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCsv } from '../src/csv.js';
 import { parseSheetRows } from '../src/normalize.js';
-import { channelById } from '../src/channels.js';
+import { CHANNELS, channelById } from '../src/channels.js';
 import { sheetCsvUrl, sheetSource } from '../src/sync.js';
 
 const csv = `"Date","Time","Direction","Entry","Exit","TP","SL","RR","Result","Pips"
@@ -51,12 +51,27 @@ test('falls back to price-based R when there is no Result/RR', () => {
   assert.equal(parseSheetRows(rows, channelById('5x'), {}).trades[0].r, 1.32);
 });
 
-test('tabs are addressed by name unless a gid is given', () => {
-  const cfg = { sheetId: 'abc', gids: { '5x': '0', gold: '' }, tabs: { '5x': '5X', gold: 'Gold Indicator', btc: '-' } };
-  assert.deepEqual(sheetSource(cfg, '5x'), { gid: '0' });
-  assert.deepEqual(sheetSource(cfg, 'gold'), { tab: 'Gold Indicator' });
+test('tabs are addressed by gid only, "-" skips a channel', () => {
+  const cfg = { sheetId: 'abc', gids: { '5x': '0', gold: '', btc: '-' } };
+  assert.equal(sheetSource(cfg, '5x'), '0');
+  assert.equal(sheetSource(cfg, 'gold'), null);
   assert.equal(sheetSource(cfg, 'btc'), null);
-  assert.equal(sheetSource({ ...cfg, sheetId: '' }, 'gold'), null);
-  assert.match(sheetCsvUrl('abc', { tab: 'Gold Indicator' }), /gviz\/tq\?tqx=out:csv&headers=1&sheet=Gold%20Indicator$/);
-  assert.match(sheetCsvUrl('abc', { gid: '0' }), /export\?format=csv&gid=0$/);
+  assert.equal(sheetSource({ ...cfg, sheetId: '' }, '5x'), null);
+  assert.match(sheetCsvUrl('abc', '0'), /export\?format=csv&gid=0$/);
+});
+
+test('every channel has its own tab id', () => {
+  const gids = CHANNELS.map((c) => c.defaultGid);
+  assert.ok(gids.every(Boolean));
+  assert.equal(new Set(gids).size, CHANNELS.length);
+});
+
+test('5X Crypto tab: Points header, 1:x RR, unreadable date reported', () => {
+  const crypto = `Date,Time,Direction,Entry,Exit,TP,SL,RR,Result,Points,,,Metric,Value
+10/23/2026,11:00,SELL,81843.7,81161,81161,82133.1,1:2,TP,681,,,TP,5
+19/2026,20:53,SELL,63396,59606,59606,64142,1:5,TP,3790,,,,`;
+  const { trades, skippedRows } = parseSheetRows(parseCsv(crypto), channelById('5x-crypto'), { dateFormat: 'MDY', defaultYear: 2026 });
+  assert.equal(trades.length, 1);
+  assert.deepEqual([trades[0].date, trades[0].pips, trades[0].r], ['2026-10-23', 681, 2]);
+  assert.deepEqual(skippedRows, [{ row: 3, date: '19/2026' }]);
 });

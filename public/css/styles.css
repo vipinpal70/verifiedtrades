@@ -50,7 +50,7 @@ button, input { font: inherit; color: inherit; }
 .eyebrow-line { width: 28px; height: 2px; background: var(--accent); }
 .hero h1 { font-size: clamp(36px, 7vw, 76px); line-height: 1; font-weight: 800; }
 .lede { font-size: clamp(17px, 2vw, 21px); color: var(--text-2); margin: 18px 0 32px; }
-.hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; border-top: 1px solid var(--line); }
+.hero-stats { display: grid; grid-template-columns: 1fr 1fr 1.6fr; margin: 0; border-top: 1px solid var(--line); }
 .hero-stats > div { padding: 24px 16px 0 0; }
 .hero-stats > div + div { border-left: 1px solid var(--line); padding-left: 16px; }
 .hero-stats dt { font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--text-2); order: 2; }
@@ -76,6 +76,9 @@ button, input { font: inherit; color: inherit; }
 .max-lot { color: var(--accent); letter-spacing: .06em; }
 .presets button:disabled { opacity: .35; cursor: not-allowed; }
 
+.calc > * { min-width: 0; }
+.rulebook td { white-space: normal; }
+@media (max-width: 480px) { .rulebook th, .rulebook td { padding-left: 8px !important; padding-right: 8px !important; } .rulebook .you { display: block; margin-left: 0; } }
 .rulebook { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 14px; }
 .rulebook summary { cursor: pointer; font-weight: 700; font-size: 15px; }
 .rulebook p { margin: 6px 0 10px; }
@@ -108,6 +111,16 @@ button, input { font: inherit; color: inherit; }
 .kpi .v.long { font-size: 19px; }
 .kpi .l { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); margin-top: 10px; }
 
+.kpi .l { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; }
+.info { flex: none; width: 24px; height: 24px; margin: -5px -6px -5px 0; padding: 0; border: 0; background: none; cursor: help; display: grid; place-items: center; }
+.info > span { width: 15px; height: 15px; border: 1px solid var(--line-strong); border-radius: 50%; display: grid; place-items: center; font: italic 600 10px/1 Georgia, serif; letter-spacing: 0; text-transform: none; color: var(--text-2); }
+.info:hover > span, .info:focus-visible > span { border-color: var(--accent); color: var(--accent); }
+.kpi-tip { position: fixed; z-index: 20; width: max-content; max-width: min(280px, calc(100vw - 16px)); padding: 10px 12px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r); box-shadow: 0 6px 20px rgba(0,0,0,.5); font-size: 13px; line-height: 1.45; pointer-events: none; }
+.kpi-tip[hidden] { display: none; }
+.wiped { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--loss); border-radius: var(--r); color: var(--loss); font-size: 14px; }
+.panel-title { display: flex; align-items: center; gap: 10px 20px; flex-wrap: wrap; }
+.subs button { padding: 8px 16px; font: 700 14px var(--sans); min-height: 40px; }
+
 .chart-card { padding: 20px; margin-bottom: 20px; }
 .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .chart-head h3 { font-size: 16px; }
@@ -137,8 +150,9 @@ button, input { font: inherit; color: inherit; }
 .section-title { font-size: 13px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--text-2); margin: 0 0 12px; }
 .months { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 32px; }
 .month { padding: 16px; display: grid; gap: 10px; }
-.month h4 { margin: 0; font-size: 16px; display: flex; justify-content: space-between; }
-.month .r { font: 600 28px/1 var(--mono); }
+.month h4 { margin: 0; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.month h4 .small { font-size: 12px; white-space: nowrap; }
+.month .r { font: 600 24px/1 var(--mono); }
 .month dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
 .month dt { color: var(--text-2); }
 .month dd { margin: 0; text-align: right; font-family: var(--mono); }
@@ -222,4 +236,8 @@ tbody tr:hover { background: var(--accent-soft); }
 @media (max-width: 480px) {
   .hero-stats > div + div { padding-left: 10px; }
   .hero-stats dt { font-size: 10px; letter-spacing: .1em; }
+}
+@media (max-width: 560px) {
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  .hero-stats > div:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); padding-left: 0; margin-top: 20px; }
 }

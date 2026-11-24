@@ -25,7 +25,7 @@ With no `SHEET_ID` set, the 5X tab shows the bundled November 2026 trade sheet (
 
 ## Google Sheet setup
 
-1. Tabs are read by name: `5X`, `Gold Indicator`, `BTC Indicator` (rename via `SHEET_TAB_*` in `.env`). A tab's `gid` (from `#gid=` in the URL), if set, takes priority and gives the most exact export.
+1. Tabs are read by their id (`gid`, the number after `#gid=` in the URL), so renaming a tab is safe. The ids for 5X Gold, 5X Crypto, Gold Indicator and BTC Indicator are in `src/channels.js`; override them with `SHEET_GID_*` in `.env`. Tabs are never read by name, because Google returns the first tab's data for a name that doesn't exist.
 2. Share the sheet as **Anyone with the link: Viewer**. A private sheet returns HTTP 401, the sync logs it, and the site keeps the last good data.
 3. Put the sheet ID in `.env`.
 4. Columns are matched by header name, so order doesn't matter and title rows above the header are fine:
@@ -53,6 +53,7 @@ R per trade: an explicit `R` column wins. Otherwise SL = −1R, B.E = 0R, TP = t
 ## Things to confirm
 
 - **BTC lot maths:** `src/channels.js` assumes 1 lot = 1 BTC and 1 pip = $1. Gold is $10 per pip per lot, which matches the sheet's pips. Adjust `pipValuePerLot` to your broker.
+- **Total Gained %** = (final capital − starting capital) ÷ starting capital, at the lot size and capital in the calculator (opens at 1.00 lot and $10,000). **R** is per trade only: SL = −1R, TP = its RR, B.E = 0R.
 - **Win rate** = wins ÷ (wins + losses); breakevens are excluded.
 - The copy calculator uses a fixed lot size, with no spread, commission or slippage, and says so on the page.
 

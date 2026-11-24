@@ -31,7 +31,7 @@ export function renderEquityChart(host, points, { format, label, describe }) {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const W = Math.max(280, host.clientWidth);
   const H = W < 560 ? 220 : 300;
-  const m = { t: 12, r: 64, b: 28, l: 4 };
+  const m = { t: 12, r: 72, b: 28, l: 4 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
 
   const vals = points.map((p) => p.value);

@@ -19,7 +19,7 @@ function buildPayload() {
   payload = {
     generatedAt: new Date().toISOString(),
     syncIntervalMin: config.syncIntervalMin,
-    channels: CHANNELS.map(({ gidEnv, tabEnv, defaultTab, ...ch }) => {
+    channels: CHANNELS.map(({ gidEnv, defaultGid, ...ch }) => {
       const lastOk = status.lastOk.find((s) => s.channel === ch.id);
       const latest = status.latest.find((s) => s.channel === ch.id);
       return {

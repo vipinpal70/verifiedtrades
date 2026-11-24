@@ -14,17 +14,19 @@ const store = {
 const state = {
   data: null,
   tab: store.get('tab', 'all'),
+  sub: {}, // selected channel per grouped tab, e.g. { '5x': '5x-crypto' }; defaults to the first
   // Calculator always opens at these defaults (not remembered between visits).
   lots: 1,
   balance: 10000,
-  unit: 'r',
+  unit: 'pct',
 };
 
 // ---- formatting --------------------------------------------------------------
 const nf = (d) => new Intl.NumberFormat(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 const sign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '');
 const fmt = {
-  r: (v, axis) => `${sign(v)}${nf(axis ? 0 : 1).format(Math.abs(v))}R`,
+  r: (v) => `${sign(v)}${nf(1).format(Math.abs(v))}R`,
+  gain: (v, axis) => `${sign(v)}${nf(axis && (v === 0 || Math.abs(v) >= 10) ? 0 : 1).format(Math.abs(v))}%`,
   pips: (v) => `${sign(v)}${nf(0).format(Math.abs(v))}`,
   usd: (v, axis) => `${sign(v)}$${nf(axis || Math.abs(v) >= 1000 ? 0 : 2).format(Math.abs(v))}`,
   pct: (v) => (v == null ? '—' : `${nf(1).format(v * 100)}%`),
@@ -36,9 +38,11 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const tone = (v) => (v > 0 ? 'accent' : v < 0 ? 'loss' : '');
 
 function countUp(node, to, format) {
+  const run = (node.countRun = (node.countRun ?? 0) + 1); // a newer value cancels an older animation
   if (reduceMotion || !Number.isFinite(to)) { node.textContent = format(to); return; }
   const start = performance.now(), dur = 900;
   const step = (now) => {
+    if (node.countRun !== run) return;
     const k = Math.min(1, (now - start) / dur), e = 1 - (1 - k) ** 3;
     node.textContent = format(to * e);
     if (k < 1) requestAnimationFrame(step);
@@ -61,7 +65,23 @@ function views() {
     trades: c.trades.map((t) => ({ ...t, pipValuePerLot: c.pipValuePerLot, channelName: c.name })),
   }));
   const all = { id: 'all', name: 'All sources', instrument: 'Combined', trades: chans.flatMap((c) => c.trades), combined: true };
-  return [all, ...chans];
+  // Channels that share a group become one tab with a button per channel (5X Channel: Gold / Crypto).
+  const tabs = [];
+  for (const c of chans) {
+    if (!c.group) { tabs.push(c); continue; }
+    const g = tabs.find((v) => v.subs && v.id === c.group);
+    if (g) { g.subs.push(c); g.trades = g.trades.concat(c.trades); }
+    else tabs.push({ id: c.group, name: c.groupName, subs: [c], trades: c.trades });
+  }
+  return [all, ...tabs];
+}
+
+/** What the panel shows: the open tab, or for a grouped tab the selected channel inside it. */
+function currentView(vs = views()) {
+  const tab = vs.find((v) => v.id === state.tab);
+  if (!tab.subs) return tab;
+  const sub = tab.subs.find((c) => c.id === state.sub[tab.id]) ?? tab.subs[0];
+  return { ...sub, title: tab.name, parent: tab };
 }
 
 async function load() {
@@ -88,7 +108,7 @@ function renderAll() {
   renderStatus();
   renderHero(vs[0]);
   renderTabs(vs);
-  renderPanel(vs.find((v) => v.id === state.tab));
+  renderPanel(currentView(vs));
 }
 
 function renderStatus() {
@@ -102,14 +122,24 @@ function renderStatus() {
 }
 
 function renderHero(all) {
-  const s = computeStats(all.trades);
+  const s = computeStats(all.trades, { lots: state.lots, balance: state.balance });
   const box = $('#hero-stats');
   countUp(box.querySelector('[data-k="count"]'), s.count, (v) => nf(0).format(Math.round(v)));
   countUp(box.querySelector('[data-k="winRate"]'), s.winRate ?? NaN, (v) => (Number.isFinite(v) ? `${Math.round(v * 100)}%` : '—'));
-  countUp(box.querySelector('[data-k="totalR"]'), s.totalR, (v) => fmt.r(v));
+  renderHeroGain(s, true);
   const months = (d) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   const [a, b] = s.first ? [months(s.first), months(s.last)] : [];
   $('#hero-period').textContent = !a ? '' : a === b ? a : `${a} — ${b}`;
+}
+
+/** Headline return: follows the calculator's lot size and starting capital. */
+function renderHeroGain(s, animate) {
+  const node = $('#hero-stats [data-k="gain"]');
+  node.className = s.wipedOutAt ? 'loss' : tone(s.gainPct);
+  if (s.wipedOutAt) { countUp(node, NaN, () => 'Wiped out'); }
+  else if (animate) countUp(node, s.gainPct, (v) => fmt.gain(v));
+  else countUp(node, NaN, () => fmt.gain(s.gainPct));
+  $('#hero-basis').textContent = `Total Gained % is the return at ${nf(2).format(state.lots)} lot per trade from $${nf(0).format(state.balance)} starting capital.`;
 }
 
 function renderTabs(vs) {
@@ -134,7 +164,7 @@ function renderTabs(vs) {
 
 function selectTab(id, focus) {
   state.tab = id;
-  if (id === 'all' && state.unit === 'pips') state.unit = 'r';
+  if (id === 'all' && state.unit === 'pips') state.unit = 'pct';
   store.set('tab', id);
   renderAll();
   if (focus) $(`#tab-${id}`).focus();
@@ -143,10 +173,9 @@ function selectTab(id, focus) {
 // The calculator is one persistent element, moved below the chart on every render,
 // so its inputs keep their listeners and focus while the panel around them redraws.
 const calcEl = document.getElementById('calc');
-function placeCalc(panel) {
+function placeCalc(panel, focused) {
   const slot = panel.querySelector('#calc-slot');
   if (!slot) { calcEl.hidden = true; return; }
-  const focused = calcEl.contains(document.activeElement) ? document.activeElement : null;
   slot.replaceWith(calcEl);
   calcEl.hidden = false;
   focused?.focus({ preventScroll: true });
@@ -154,42 +183,46 @@ function placeCalc(panel) {
 
 function renderPanel(view) {
   const panel = $('#panel');
-  calcEl.remove(); // detach before innerHTML replaces the panel contents
-  const s = computeStats(view.trades, { lots: state.lots });
-  const units = view.combined ? ['r', 'usd'] : ['r', 'pips', 'usd'];
-  if (!units.includes(state.unit)) state.unit = 'r';
+  const focused = calcEl.contains(document.activeElement) ? document.activeElement : null;
+  hideTip();
+  calcEl.remove(); // detach before innerHTML replaces the panel contents (this drops focus)
+  const s = computeStats(view.trades, { lots: state.lots, balance: state.balance });
+  const units = view.combined ? ['pct', 'usd'] : ['pct', 'pips', 'usd'];
+  if (!units.includes(state.unit)) state.unit = 'pct';
+  const pipLabel = view.pipLabel ?? 'Pips';
   const sample = !view.combined && view.source === 'seed';
 
   if (!view.trades.length) {
-    panel.innerHTML = `<div class="panel-head"><h2>${esc(view.name)}</h2><span class="badge">${esc(view.instrument)}</span></div>
+    panel.innerHTML = `<div class="panel-head"><div class="panel-title"><h2>${esc(view.title ?? view.name)}</h2>${subButtons(view)}</div><span class="badge">${esc(view.instrument)}</span></div>
       <div class="state card"><p>No trades published for ${esc(view.name)} yet.</p>
       <p class="muted small">They appear here automatically after the next sheet sync (every ${state.data.syncIntervalMin} min).</p></div>`;
+    bindSubButtons(panel, view);
     return;
   }
 
   const final = state.balance + s.totalUsd;
   panel.innerHTML = `
     <div class="panel-head reveal">
-      <h2>${esc(view.name)}</h2>
+      <div class="panel-title"><h2>${esc(view.title ?? view.name)}</h2>${subButtons(view)}</div>
       <div>${sample ? '<span class="badge warn" title="Bundled sample: the November 2026 trade sheet">Sample data</span> ' : ''}<span class="badge">${esc(view.instrument)}</span>
       <span class="muted small">${fmt.date(s.first)} – ${fmt.date(s.last)}</span></div>
     </div>
 
     <div class="kpis reveal">
-      ${kpi(nf(0).format(s.count), 'Trades')}
-      ${kpi(`${s.wins}–${s.losses}${s.be ? `–${s.be}` : ''}`, s.be ? 'W – L – BE' : 'Wins – Losses')}
-      ${kpi(fmt.pct(s.winRate), 'Win rate')}
-      ${kpi(fmt.r(s.totalR), 'Total R', tone(s.totalR))}
-      ${view.combined ? kpi(s.avgWinR == null ? '—' : fmt.r(s.avgWinR), 'Avg win') : kpi(fmt.pips(s.totalPips), 'Net pips', tone(s.totalPips))}
-      ${kpi(s.profitFactor == null ? '—' : `${nf(1).format(s.profitFactor)}×`, 'Profit factor')}
-      ${kpi(s.maxDrawdownR ? `−${nf(1).format(s.maxDrawdownR)}R` : '0R', 'Max drawdown')}
+      ${kpi(nf(0).format(s.count), 'Trades', TIPS.trades)}
+      ${kpi(`${s.wins}–${s.losses}${s.be ? `–${s.be}` : ''}`, s.be ? 'W – L – BE' : 'Wins – Losses', TIPS.wl)}
+      ${kpi(fmt.pct(s.winRate), 'Win rate', TIPS.winRate)}
+      ${s.wipedOutAt ? kpi('Wiped out', 'Total Gained %', TIPS.total(), 'loss') : kpi(fmt.gain(s.gainPct), 'Total Gained %', TIPS.total(), tone(s.gainPct))}
+      ${view.combined ? kpi(s.avgWinR == null ? '—' : fmt.r(s.avgWinR), 'Avg win', TIPS.avgWin) : kpi(fmt.pips(s.totalPips), `Net ${pipLabel.toLowerCase()}`, TIPS.pips(view), tone(s.totalPips))}
+      ${kpi(s.profitFactor == null ? '—' : `${nf(1).format(s.profitFactor)}×`, 'Profit factor', TIPS.pf)}
+      ${kpi(s.maxDrawdownPct ? `−${nf(1).format(Math.min(100, s.maxDrawdownPct))}%` : '0%', 'Max drawdown', TIPS.dd())}
     </div>
 
     <div class="card chart-card reveal">
       <div class="chart-head">
         <div><h3>Cumulative growth</h3><div class="big ${tone(s.equity.at(-1)[state.unit])}" id="chart-total"></div></div>
         <div class="seg" role="group" aria-label="Chart unit">
-          ${units.map((u) => `<button type="button" data-unit="${u}" aria-pressed="${u === state.unit}">${{ r: 'R', pips: 'Pips', usd: `$ @ ${state.lots} lot` }[u]}</button>`).join('')}
+          ${units.map((u) => `<button type="button" data-unit="${u}" aria-pressed="${u === state.unit}">${{ pct: '%', pips: pipLabel, usd: `$ @ ${state.lots} lot` }[u]}</button>`).join('')}
         </div>
       </div>
       <div class="chart-host" id="chart"></div>
@@ -199,6 +232,7 @@ function renderPanel(view) {
     <div id="calc-slot"></div>
 
     <h3 class="section-title">Copying at ${esc(nf(2).format(state.lots))} lot from $${esc(nf(0).format(state.balance))}</h3>
+    ${s.wipedOutAt ? `<p class="wiped" role="alert">At this lot size and capital the account would have been wiped out on trade #${s.wipedOutAt.n} (${fmt.date(s.wipedOutAt.trade.date)}). Choose a smaller lot or more capital. The figures below assume trading carried on regardless.</p>` : ''}
     <div class="copy-strip reveal">
       <div><div class="v ${tone(s.totalUsd)}">${fmt.usd(s.totalUsd)}</div><div class="l">Net P&amp;L</div></div>
       <div><div class="v">$${nf(2).format(final)}</div><div class="l">Final balance</div></div>
@@ -215,9 +249,10 @@ function renderPanel(view) {
     </div>
   `;
 
-  placeCalc(panel);
+  placeCalc(panel, focused);
+  bindSubButtons(panel, view);
   panel.querySelectorAll('.bar > span').forEach((b) => { b.style.width = `${b.dataset.w}%`; });
-  panel.querySelector('.seg').onclick = (e) => {
+  panel.querySelector('.chart-head .seg').onclick = (e) => {
     const b = e.target.closest('[data-unit]'); if (!b) return;
     state.unit = b.dataset.unit; renderPanel(view);
   };
@@ -278,18 +313,84 @@ function initScrollbar(box) {
   update();
 }
 
-const kpi = (v, l, cls = '') =>
-  `<div class="card kpi"><div class="v ${cls}${String(v).length > 8 ? ' long' : ''}">${esc(v)}</div><div class="l">${esc(l)}</div></div>`;
+const kpi = (v, l, tip, cls = '') =>
+  `<div class="card kpi"><div class="v ${cls}${String(v).length > 8 ? ' long' : ''}">${esc(v)}</div>
+    <div class="l"><span>${esc(l)}</span><button type="button" class="info" aria-label="About ${esc(l)}" data-tip="${esc(tip)}"><span aria-hidden="true">i</span></button></div></div>`;
+
+// ---- Gold / Crypto buttons inside a grouped tab -------------------------------
+const subButtons = (view) => (!view.parent ? '' : `<div class="seg subs" role="group" aria-label="${esc(view.parent.name)} market">
+  ${view.parent.subs.map((c) => `<button type="button" data-sub="${esc(c.id)}" aria-pressed="${c.id === view.id}">${esc(c.groupLabel)}<span class="tab-count">${c.trades.length}</span></button>`).join('')}</div>`);
+
+function bindSubButtons(panel, view) {
+  const box = panel.querySelector('.subs');
+  if (!box) return;
+  box.onclick = (e) => {
+    const b = e.target.closest('[data-sub]'); if (!b) return;
+    state.sub[view.parent.id] = b.dataset.sub;
+    renderPanel(currentView());
+    panel.querySelector(`[data-sub="${b.dataset.sub}"]`)?.focus({ preventScroll: true });
+  };
+}
+
+// ---- KPI explanations (i icons) -----------------------------------------------
+const TIPS = {
+  trades: 'All closed trades in this view, including breakevens.',
+  wl: 'Wins (hit take profit) – losses (hit stop loss) – breakevens (closed around entry, counted as 0%).',
+  winRate: 'Wins ÷ (wins + losses). Breakeven trades are not counted.',
+  total: () => `(Final capital − starting capital) ÷ starting capital, taking every trade at ${nf(2).format(state.lots)} lot from $${nf(0).format(state.balance)}. Change the lot or capital in the calculator below. Excludes spread, commission and slippage.`,
+  avgWin: 'Average result of the winning trades in R. 1R is the amount risked on a trade (entry to stop loss), so +2.5R means 2.5 times the risk. A stop loss is −1R and a breakeven is 0R.',
+  pips: (v) => {
+    const unit = v.pipLabel.toLowerCase();
+    return `Total ${unit} won minus total ${unit} lost. 1 ${unit.slice(0, -1)} = a $${v.pipSize.toFixed(2)} price move in ${v.instrument}.`;
+  },
+  pf: 'Total $ won ÷ total $ lost. Above 1 means the trades made more than they lost. Shows — when there are no losses yet.',
+  dd: () => `The biggest fall of the account from a high point to a later low, as a % of that high point, at ${nf(2).format(state.lots)} lot from $${nf(0).format(state.balance)}.`,
+};
+const tipEl = Object.assign(document.createElement('div'), { id: 'kpi-tip', className: 'kpi-tip', hidden: true });
+tipEl.setAttribute('role', 'tooltip');
+document.body.append(tipEl);
+let tipFor = null;
+
+function showTip(btn) {
+  if (tipFor && tipFor !== btn) tipFor.removeAttribute('aria-describedby');
+  tipFor = btn;
+  btn.setAttribute('aria-describedby', 'kpi-tip');
+  tipEl.textContent = btn.dataset.tip;
+  tipEl.hidden = false;
+  const b = btn.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+  const left = Math.max(8, Math.min(b.left + b.width / 2 - tipEl.offsetWidth / 2, vw - tipEl.offsetWidth - 8));
+  const below = b.bottom + 6;
+  tipEl.style.left = `${left}px`;
+  tipEl.style.top = `${below + tipEl.offsetHeight > innerHeight - 8 ? b.top - tipEl.offsetHeight - 6 : below}px`;
+}
+
+function hideTip() {
+  tipFor?.removeAttribute('aria-describedby');
+  tipFor = null; tipEl.hidden = true;
+}
+
+function initTips() {
+  const panel = $('#panel');
+  const btnOf = (e) => e.target.closest?.('.info');
+  panel.addEventListener('pointerover', (e) => { if (e.pointerType === 'mouse' && btnOf(e)) showTip(btnOf(e)); });
+  panel.addEventListener('pointerout', (e) => { if (e.pointerType === 'mouse' && btnOf(e) && !btnOf(e).contains(e.relatedTarget)) hideTip(); });
+  panel.addEventListener('focusin', (e) => { if (btnOf(e)) showTip(btnOf(e)); });
+  panel.addEventListener('focusout', (e) => { if (btnOf(e)) hideTip(); });
+  panel.addEventListener('click', (e) => { if (btnOf(e)) showTip(btnOf(e)); }); // touch, and Safari (no focus on click)
+  document.addEventListener('pointerdown', (e) => { if (!btnOf(e)) hideTip(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
+  addEventListener('scroll', hideTip, { passive: true });
+}
 
 function monthCard(m, view) {
   return `<article class="card month">
     <h4>${esc(fmt.month(m.month))} <span class="muted small">${m.count} trades</span></h4>
-    <div class="r ${tone(m.r)}">${fmt.r(m.r)}</div>
+    <div class="r ${tone(m.pct)}">${fmt.gain(m.pct)}</div>
     <div class="bar" aria-hidden="true"><span data-w="${Math.round((m.winRate ?? 0) * 100)}"></span></div>
     <dl>
       <dt>Win rate</dt><dd>${fmt.pct(m.winRate)}</dd>
       <dt>W – L</dt><dd>${m.wins} – ${m.losses}</dd>
-      ${view.combined ? '' : `<dt>Pips</dt><dd class="${tone(m.pips)}">${fmt.pips(m.pips)}</dd>`}
+      ${view.combined ? '' : `<dt>${esc(view.pipLabel)}</dt><dd class="${tone(m.pips)}">${fmt.pips(m.pips)}</dd>`}
       <dt>At ${nf(2).format(state.lots)} lot</dt><dd class="${tone(m.usd)}">${fmt.usd(m.usd)}</dd>
     </dl>
   </article>`;
@@ -302,7 +403,7 @@ function tradeTable(view, s) {
     <thead><tr>
       <th scope="col">#</th><th scope="col">Date</th><th scope="col">${view.combined ? 'Source' : 'Time'}</th><th scope="col">Side</th>
       <th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">TP</th><th scope="col">SL</th>
-      <th scope="col">Result</th><th scope="col">Pips</th><th scope="col">R</th><th scope="col">$ @ ${esc(state.lots)}</th>
+      <th scope="col">Result</th><th scope="col">${esc(view.pipLabel ?? 'Pips')}</th><th scope="col">R</th><th scope="col">$ @ ${esc(state.lots)}</th>
     </tr></thead>
     <tbody>${rows.map(({ t, n }) => {
       const o = outcome(t), cls = o === 'win' ? 'tp' : o === 'loss' ? 'sl' : 'be';
@@ -326,15 +427,15 @@ function tradeTable(view, s) {
 function drawChart(view, s) {
   const host = $('#chart');
   const unit = state.unit;
-  const format = (v, axis) => fmt[unit](v, axis);
+  const format = (v, axis) => fmt[unit === 'pct' ? 'gain' : unit](v, axis);
   const points = s.equity.map((e) => ({ value: e[unit], trade: e.trade }));
   $('#chart-total').textContent = format(points.at(-1).value);
   const draw = () => renderEquityChart(host, points, {
     format,
-    label: `${view.name} cumulative ${unit === 'r' ? 'R' : unit === 'usd' ? 'dollar' : 'pip'} growth over ${s.count} trades, ending at ${format(points.at(-1).value)}`,
+    label: `${view.name} cumulative ${unit === 'pct' ? 'percent' : unit === 'usd' ? 'dollar' : (view.pipLabel ?? 'pips').toLowerCase()} growth over ${s.count} trades, ending at ${format(points.at(-1).value)}`,
     describe: (p, i) => {
       const t = p.trade;
-      const own = { r: t.r == null ? '—' : fmt.r(t.r), pips: t.pips == null ? '—' : fmt.pips(t.pips), usd: fmt.usd(tradeUsd(t, state.lots)) }[unit];
+      const own = { pct: `${fmt.gain((tradeUsd(t, state.lots) / state.balance) * 100)}${t.r == null ? '' : ` (${fmt.r(t.r)})`}`, pips: t.pips == null ? '—' : fmt.pips(t.pips), usd: fmt.usd(tradeUsd(t, state.lots)) }[unit];
       return [`#${i} · ${t.side ?? ''} ${t.result}`, `${fmt.date(t.date)}${t.time ? ` ${t.time}` : ''}`, `Trade ${own}`, `Total ${format(p.value)}`];
     },
   });
@@ -376,17 +477,24 @@ function initCalc() {
   const syncPresets = () => document.querySelectorAll('[data-lots]').forEach((b) => b.setAttribute('aria-pressed', Number(b.dataset.lots) === state.lots));
   syncPresets();
   renderRules(state.balance);
+  let wanted = state.lots; // the lot the visitor chose, before any rule book cap
 
   const apply = (changed) => {
+    if (!calcEl.isConnected) return; // switched to a tab without a calculator mid-typing
     let l = Number(lots.value);
     const b = Number(bal.value);
     const balOk = b >= 1;
     const max = balOk ? maxLotFor(b) : null;
     note.hidden = true;
 
-    // Capital went down and the current lot is now over the rule: step the lot down to the max.
-    if (balOk && changed === 'balance' && l > max) {
-      l = max; lots.value = max;
+    if (changed === 'lots') wanted = l;
+    // Capital changed: use the chosen lot, capped at the max. Restores it when capital goes back up
+    // (typing "1500" passes through "1", which must not leave the lot stuck at 0.20).
+    if (balOk && changed === 'balance' && wanted >= 0.01) {
+      l = Math.min(wanted, max);
+      if (Number(lots.value) !== l) lots.value = l;
+    }
+    if (balOk && changed === 'balance' && wanted > max) {
       note.textContent = `Lot size reduced to ${nf(2).format(max)}, the rule book max for ${money(b)} capital.`;
       note.hidden = false;
     }
@@ -401,7 +509,11 @@ function initCalc() {
     if (!lotsOk || !balOk) return;
     state.lots = Math.round(l * 100) / 100; state.balance = b;
     syncPresets();
-    if (state.data) renderPanel(views().find((v) => v.id === state.tab));
+    if (state.data) {
+      const vs = views();
+      renderHeroGain(computeStats(vs[0].trades, { lots: state.lots, balance: state.balance }), false);
+      renderPanel(currentView(vs));
+    }
   };
   let t = 0;
   lots.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => apply('lots'), 250); });
@@ -411,5 +523,6 @@ function initCalc() {
 }
 
 initCalc();
+initTips();
 load();
 setInterval(load, 5 * 60_000); // pick up new syncs without a reload
